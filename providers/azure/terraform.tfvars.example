@@ -1,0 +1,79 @@
+# ==========================================================================
+# Estabilis Workload – Azure Variables
+# ==========================================================================
+# Copy this file to terraform.tfvars and fill in the required values.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# Then run:
+#   terraform init
+#   terraform plan
+#   terraform apply
+#
+# Terraform loads terraform.tfvars automatically (no -var-file needed).
+# ==========================================================================
+
+# --- Required ---
+
+subscription_id = ""
+tenant_id       = ""
+
+# --- Environment ---
+
+environment = "prod"
+# name_prefix = "estabilis"
+# location    = "eastus2"
+
+# --- Optional features ---
+# velero_enabled      = false
+# diagnostics_enabled = false
+# keyvault_enabled    = false
+
+# --- ACR ---
+# acr_enabled = true
+# acr_sku     = "Premium"
+
+# --- Network ---
+# Options: default, cilium, cilium-acns, byo-cni
+# network_dataplane = "cilium"
+#
+# IMPORTANT: byo-cni DESTROYS and RECREATES the cluster. Apply in two steps:
+#   1. terraform apply -target=azurerm_kubernetes_cluster.workload -target=helm_release.cilium
+#   2. terraform apply
+# Destroy in two steps (avoids Helm timeout when cluster is already gone):
+#   1. terraform state rm helm_release.cilium
+#   2. terraform destroy
+# NOTE: Step 1 of apply may fail with "NotFound" if Azure hasn't propagated the
+# cluster deletion. Wait ~1 minute and retry the same command.
+# network_dataplane       = "byo-cni"
+# byo_cni_i_understand_this_destroys_the_cluster = true
+# cilium_version          = "1.19.2"
+
+# --- Platform access ---
+# Platform NAT gateway IP — required for ArgoCD to reach this workload's API server.
+# Get from platform: terraform output -raw nat_gateway_public_ip
+# authorized_ip_ranges = ["<platform-nat-gateway-ip>/32"]
+
+# --- Docker Hub cache (requires Docker Hub account) ---
+# acr_cache_dockerhub_enabled = true
+# acr_dockerhub_username      = ""
+# acr_dockerhub_token         = ""
+
+# --- Hub registration ---
+# Automates workload registration in the platform hub.
+# Requires the platform's workload operator to be deployed on the hub cluster first.
+#
+# Step 1 — Get values from the platform:
+#   hub_api_server_url  → terraform output -raw hub_api_server_url  (estabilis-platform)
+#   hub_egress_ip       → terraform output -raw nat_gateway_public_ip (estabilis-platform)
+#   hub_registrar_token → kubectl get secret workload-registrar-token \
+#                           -n estabilis-system \
+#                           -o jsonpath='{.data.token}' | base64 -d
+#
+# Step 2 — When hub_egress_ip is set here, remove the same IP from
+#           authorized_ip_ranges above to avoid duplication.
+#
+# hub_registration_enabled = true
+# hub_api_server_url        = ""
+# hub_egress_ip             = ""
+# hub_registrar_token       = ""  # use secrets.auto.tfvars or TF_VAR_hub_registrar_token
