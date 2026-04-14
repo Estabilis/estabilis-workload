@@ -74,6 +74,10 @@ resource "kubernetes_manifest" "workload_registration" {
       caCertificate = azurerm_kubernetes_cluster.workload.kube_config[0].cluster_ca_certificate
       bearerToken   = kubernetes_secret_v1.hub_workload_token[0].metadata[0].name
       hubEgressIp   = local.hub_egress
+      bridgeSecretRef = {
+        name      = kubernetes_secret_v1.bridge[0].metadata[0].name
+        namespace = kubernetes_secret_v1.bridge[0].metadata[0].namespace
+      }
       azure = {
         subscriptionId = var.subscription_id
         resourceGroup  = azurerm_resource_group.workload.name
@@ -91,5 +95,6 @@ resource "kubernetes_manifest" "workload_registration" {
     azurerm_kubernetes_cluster_node_pool.workload_regular,
     azurerm_role_assignment.workload_operator_aks,
     kubernetes_secret_v1.hub_workload_token,
+    kubernetes_secret_v1.bridge,
   ]
 }

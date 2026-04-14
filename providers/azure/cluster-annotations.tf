@@ -1,42 +1,47 @@
 # ---------------------------------------------------------------------------
-# Cluster Secret annotations — per-cluster identity values
+# Bridge Secret — per-cluster values consumed by the workload-operator
 # ---------------------------------------------------------------------------
-# The ArgoCD Cluster Secret for this workload cluster (created by the
-# estabilis-workload-operator from the WorkloadCluster CR) carries
-# annotations that the workload-bootstrap ApplicationSets read via the
-# cluster generator's {{metadata.annotations.xxx}} syntax.
+# Workload Terraform emits Azure identifiers (tenant, keyvault URI, managed
+# identity client IDs) into a Secret on the HUB. The WorkloadCluster CR
+# (see operator-registration.tf) carries spec.bridgeSecretRef pointing at
+# this Secret. The operator reads the Secret when reconciling the CR and
+# stamps each data key as an `estabilis.io/bridge.<key>` annotation on the
+# ArgoCD Cluster Secret it creates — atomically, no race.
 #
-# This is the industry-standard ArgoCD pattern for per-cluster configuration
-# — no hub intermediary needed. See:
-# https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/Generators-Cluster/
+# Previous implementation (kubernetes_annotations.cluster_secret_identity)
+# was removed because it raced the operator: Terraform reached the annotate
+# step while the Cluster Secret had not yet been created on the hub. See
+# ADR 0010 §Hub side vs workload side for the pattern rationale.
 # ---------------------------------------------------------------------------
 
-resource "kubernetes_annotations" "cluster_secret_identity" {
-  count       = var.hub_registration_enabled ? 1 : 0
-  provider    = kubernetes.hub
-  api_version = "v1"
-  kind        = "Secret"
+resource "kubernetes_secret_v1" "bridge" {
+  count    = var.hub_registration_enabled ? 1 : 0
+  provider = kubernetes.hub
 
   metadata {
-    name      = "cluster-${local.base_name}"
-    namespace = "argocd"
+    name      = "bridge-${local.base_name}"
+    namespace = "estabilis-system"
+    labels = {
+      # ADR 0003 §S4 (Terraform-emitted) — allowed identity labels
+      "estabilis.io/managed-by"      = "platform"
+      "estabilis.io/component"       = "workload-bridge"
+      "estabilis.io/cluster-type"    = "workload"
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
   }
 
-  # Keys use DASHES (not dots) because ArgoCD's ApplicationSet cluster
-  # generator uses dot notation for path traversal. Dots in annotation
-  # keys (e.g., estabilis.io/xxx) conflict with the path separator and
-  # prevent template substitution from resolving.
-  annotations = {
-    "estabilis-tenant-id"                  = var.tenant_id
-    "estabilis-keyvault-uri"               = var.keyvault_enabled ? azurerm_key_vault.workload[0].vault_uri : ""
-    "estabilis-external-secrets-client-id"  = var.keyvault_enabled ? azurerm_user_assigned_identity.external_secrets[0].client_id : ""
-    "estabilis-cert-manager-client-id"      = var.domain != "" ? azurerm_user_assigned_identity.cert_manager[0].client_id : ""
-    "estabilis-external-dns-client-id"      = var.domain != "" ? azurerm_user_assigned_identity.external_dns[0].client_id : ""
-    "estabilis-velero-client-id"            = var.velero_enabled ? azurerm_user_assigned_identity.velero[0].client_id : ""
-  }
+  type = "Opaque"
 
-  # The Cluster Secret is created by the workload-operator AFTER
-  # processing the WorkloadCluster CR. The depends_on ensures Terraform
-  # waits for the CR to be applied before attempting to annotate.
-  depends_on = [kubernetes_manifest.workload_registration]
+  # Keys are kebab-case and become estabilis.io/bridge.<key> annotations on
+  # the workload Cluster Secret. Registry lives in ADR 0010 §Registry.
+  # Empty strings are filtered out by the operator so disabled features
+  # (e.g., keyvault_enabled=false) do not produce misleading annotations.
+  data = {
+    "tenant-id"                  = var.tenant_id
+    "keyvault-uri"               = var.keyvault_enabled ? azurerm_key_vault.workload[0].vault_uri : ""
+    "external-secrets-client-id" = var.keyvault_enabled ? azurerm_user_assigned_identity.external_secrets[0].client_id : ""
+    "cert-manager-client-id"     = var.domain != "" ? azurerm_user_assigned_identity.cert_manager[0].client_id : ""
+    "external-dns-client-id"     = var.domain != "" ? azurerm_user_assigned_identity.external_dns[0].client_id : ""
+    "velero-client-id"           = var.velero_enabled ? azurerm_user_assigned_identity.velero[0].client_id : ""
+  }
 }
