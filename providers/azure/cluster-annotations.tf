@@ -48,6 +48,7 @@ resource "kubernetes_secret_v1" "bridge" {
     "dns-provider"               = var.domain != "" ? var.dns_provider : ""
     "domain"                     = var.domain
     "cluster-name"               = azurerm_kubernetes_cluster.workload.name
+    "hub-cluster-name"           = var.hub_cluster_name
     "cloudflare-zone-id"         = var.domain != "" && var.dns_provider == "cloudflare" ? var.cloudflare_zone_id : ""
     "letsencrypt-email"          = var.letsencrypt_email
     # ADR 0014 — exposure JSON as bridge data (non-sensitive configuration).

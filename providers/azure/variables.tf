@@ -850,6 +850,12 @@ variable "hub_registration_enabled" {
   default     = false
 }
 
+variable "hub_cluster_name" {
+  description = "Name of the platform hub AKS cluster. Used to derive push URLs for observability (Alloy → Loki/Mimir). Get from: terraform output -raw aks_cluster_name (estabilis-platform)."
+  type        = string
+  default     = ""
+}
+
 variable "hub_api_server_url" {
   description = "API server URL of the platform hub AKS cluster. Get from: terraform output -raw hub_api_server_url (estabilis-platform)."
   type        = string
