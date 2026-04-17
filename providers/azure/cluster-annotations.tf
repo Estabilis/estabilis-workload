@@ -51,7 +51,10 @@ resource "kubernetes_secret_v1" "bridge" {
     "letsencrypt-email"          = var.letsencrypt_email
     # ADR 0014 — exposure JSON as bridge data (non-sensitive configuration).
     # Operator stamps as annotation; ApplicationSet goTemplate reads it.
+    # base64-encoded because helm --set-string can't handle raw JSON
+    # (curly braces and commas are metacharacters). Same encoding as the
+    # CLI uses on the hub — the child chart decodes with b64dec.
     "traefik-enabled"            = tostring(var.traefik_enabled)
-    "hubble-ui-exposures"        = jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled })
+    "hubble-ui-exposures"        = base64encode(jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled }))
   }
 }
