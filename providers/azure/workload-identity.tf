@@ -86,7 +86,7 @@ resource "azurerm_role_assignment" "velero_disk_snapshot" {
 # ---------------------------------------------------------------------------
 
 resource "azurerm_user_assigned_identity" "external_dns" {
-  count               = var.domain != "" ? 1 : 0
+  count               = var.domain != "" && var.dns_provider == "azure" ? 1 : 0
   name                = "mi-${local.base_name}-external-dns"
   resource_group_name = azurerm_resource_group.workload.name
   location            = azurerm_resource_group.workload.location
@@ -94,7 +94,7 @@ resource "azurerm_user_assigned_identity" "external_dns" {
 }
 
 resource "azurerm_federated_identity_credential" "external_dns" {
-  count                     = var.domain != "" ? 1 : 0
+  count                     = var.domain != "" && var.dns_provider == "azure" ? 1 : 0
   name                      = "fic-external-dns"
   user_assigned_identity_id = azurerm_user_assigned_identity.external_dns[0].id
   audience                  = ["api://AzureADTokenExchange"]
@@ -103,7 +103,7 @@ resource "azurerm_federated_identity_credential" "external_dns" {
 }
 
 resource "azurerm_role_assignment" "external_dns_dns_contributor" {
-  count                = var.domain != "" ? 1 : 0
+  count                = var.domain != "" && var.dns_provider == "azure" ? 1 : 0
   scope                = azurerm_dns_zone.workload[0].id
   role_definition_name = "DNS Zone Contributor"
   principal_id         = azurerm_user_assigned_identity.external_dns[0].principal_id
@@ -131,16 +131,19 @@ resource "azurerm_federated_identity_credential" "cert_manager" {
   subject                   = "system:serviceaccount:cert-manager:cert-manager"
 }
 
-# DNS zone is optional — only created if workload has its own domain
+# DNS zone is optional — only created when domain is set AND dns_provider=azure.
+# When dns_provider=cloudflare the zone lives in Cloudflare (external); no
+# Azure DNS resources are created. Cert-manager and external-dns authenticate
+# via Cloudflare API token stored in the workload Key Vault.
 resource "azurerm_dns_zone" "workload" {
-  count               = var.domain != "" ? 1 : 0
+  count               = var.domain != "" && var.dns_provider == "azure" ? 1 : 0
   name                = var.domain
   resource_group_name = azurerm_resource_group.workload.name
   tags                = local.tags
 }
 
 resource "azurerm_role_assignment" "cert_manager_dns_contributor" {
-  count                = var.domain != "" ? 1 : 0
+  count                = var.domain != "" && var.dns_provider == "azure" ? 1 : 0
   scope                = azurerm_dns_zone.workload[0].id
   role_definition_name = "DNS Zone Contributor"
   principal_id         = azurerm_user_assigned_identity.cert_manager[0].principal_id

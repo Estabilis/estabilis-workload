@@ -38,10 +38,16 @@ resource "kubernetes_secret_v1" "bridge" {
   # (e.g., keyvault_enabled=false) do not produce misleading annotations.
   data = {
     "tenant-id"                  = var.tenant_id
+    "subscription-id"            = var.subscription_id
+    "resource-group"             = azurerm_resource_group.workload.name
     "keyvault-uri"               = var.keyvault_enabled ? azurerm_key_vault.workload[0].vault_uri : ""
     "external-secrets-client-id" = var.keyvault_enabled ? azurerm_user_assigned_identity.external_secrets[0].client_id : ""
     "cert-manager-client-id"     = var.domain != "" ? azurerm_user_assigned_identity.cert_manager[0].client_id : ""
-    "external-dns-client-id"     = var.domain != "" ? azurerm_user_assigned_identity.external_dns[0].client_id : ""
+    "external-dns-client-id"     = var.domain != "" && var.dns_provider == "azure" ? azurerm_user_assigned_identity.external_dns[0].client_id : ""
     "velero-client-id"           = var.velero_enabled ? azurerm_user_assigned_identity.velero[0].client_id : ""
+    "dns-provider"               = var.domain != "" ? var.dns_provider : ""
+    "domain"                     = var.domain
+    "cloudflare-zone-id"         = var.domain != "" && var.dns_provider == "cloudflare" ? var.cloudflare_zone_id : ""
+    "letsencrypt-email"          = var.letsencrypt_email
   }
 }

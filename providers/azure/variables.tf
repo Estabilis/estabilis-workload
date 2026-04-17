@@ -27,6 +27,46 @@ variable "domain" {
   default     = ""
 }
 
+variable "dns_provider" {
+  description = "DNS backend: azure (creates Azure DNS Zone + Workload Identity) or cloudflare (uses external Cloudflare zone + API token stored in workload Key Vault). Only applies when domain is set."
+  type        = string
+  default     = "azure"
+
+  validation {
+    condition     = contains(["azure", "cloudflare"], var.dns_provider)
+    error_message = "dns_provider must be azure or cloudflare."
+  }
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID. Required when dns_provider=cloudflare and domain is set."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.dns_provider != "cloudflare" || var.domain == "" || length(var.cloudflare_zone_id) > 0
+    error_message = "cloudflare_zone_id is required when dns_provider=cloudflare and domain is set."
+  }
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token with Zone:Read + DNS:Edit permissions. Required when dns_provider=cloudflare and domain is set. Stored in the workload Key Vault, read by ExternalSecrets at runtime."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.dns_provider != "cloudflare" || var.domain == "" || length(var.cloudflare_api_token) > 0
+    error_message = "cloudflare_api_token is required when dns_provider=cloudflare and domain is set."
+  }
+}
+
+variable "letsencrypt_email" {
+  description = "Email for Let's Encrypt certificate registration. Required when domain is set."
+  type        = string
+  default     = ""
+}
+
 variable "tenant_id" {
   description = "Azure AD tenant ID."
   type        = string

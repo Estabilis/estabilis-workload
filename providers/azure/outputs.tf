@@ -81,8 +81,8 @@ output "velero_client_id" {
 }
 
 output "external_dns_client_id" {
-  description = "Client ID of the external-dns managed identity (empty if no domain)."
-  value       = var.domain != "" ? azurerm_user_assigned_identity.external_dns[0].client_id : ""
+  description = "Client ID of the external-dns managed identity (empty if no domain or dns_provider=cloudflare)."
+  value       = var.domain != "" && var.dns_provider == "azure" ? azurerm_user_assigned_identity.external_dns[0].client_id : ""
 }
 
 output "cert_manager_client_id" {
@@ -93,13 +93,13 @@ output "cert_manager_client_id" {
 # --- DNS ---
 
 output "dns_zone_name" {
-  description = "Name of the DNS zone (empty if no domain)."
-  value       = var.domain != "" ? azurerm_dns_zone.workload[0].name : ""
+  description = "Name of the DNS zone (empty if no domain or dns_provider=cloudflare)."
+  value       = var.domain != "" && var.dns_provider == "azure" ? azurerm_dns_zone.workload[0].name : ""
 }
 
 output "dns_zone_name_servers" {
-  description = "Name servers for the DNS zone (empty if no domain)."
-  value       = var.domain != "" ? azurerm_dns_zone.workload[0].name_servers : []
+  description = "Name servers for the DNS zone (empty if no domain or dns_provider=cloudflare)."
+  value       = var.domain != "" && var.dns_provider == "azure" ? azurerm_dns_zone.workload[0].name_servers : []
 }
 
 # --- Cost export (for platform OpenCost) ---

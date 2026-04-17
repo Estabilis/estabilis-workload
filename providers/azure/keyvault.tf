@@ -38,3 +38,20 @@ resource "azurerm_role_assignment" "terraform_kv_officer" {
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = data.azurerm_client_config.current.object_id
 }
+
+# ---------------------------------------------------------------------------
+# Cloudflare API token — stored in workload KV when dns_provider=cloudflare.
+# Consumed by ExternalSecrets on the workload cluster (external-dns-config
+# and cert-manager-config charts render ExternalSecret CRDs that read this
+# KV entry). The token NEVER flows through bridge annotations — ADR 0010
+# bridge is for identifiers only, not secrets.
+# ---------------------------------------------------------------------------
+
+resource "azurerm_key_vault_secret" "cloudflare_api_token" {
+  count        = var.keyvault_enabled && var.domain != "" && var.dns_provider == "cloudflare" ? 1 : 0
+  name         = "cloudflare-api-token"
+  value        = var.cloudflare_api_token
+  key_vault_id = azurerm_key_vault.workload[0].id
+
+  depends_on = [azurerm_role_assignment.terraform_kv_officer]
+}
