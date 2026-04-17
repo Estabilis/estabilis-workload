@@ -49,5 +49,9 @@ resource "kubernetes_secret_v1" "bridge" {
     "domain"                     = var.domain
     "cloudflare-zone-id"         = var.domain != "" && var.dns_provider == "cloudflare" ? var.cloudflare_zone_id : ""
     "letsencrypt-email"          = var.letsencrypt_email
+    # ADR 0014 — exposure JSON as bridge data (non-sensitive configuration).
+    # Operator stamps as annotation; ApplicationSet goTemplate reads it.
+    "traefik-enabled"            = tostring(var.traefik_enabled)
+    "hubble-ui-exposures"        = jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled })
   }
 }

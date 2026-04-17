@@ -72,6 +72,24 @@ locals {
   }
 
   tags = merge(local.caf_tags, var.extra_tags)
+
+  # --- ADR 0014: exposure host auto-derivation (same logic as platform) ---
+  is_prod_env = contains(["prod", "prd", "production"], var.environment)
+
+  _app_host = {
+    for app in ["hubble"] : app => (
+      local.is_prod_env ? "${app}.${var.domain}" :
+      var.host_pattern == "subdomain" ? "${app}.${var.environment}.${var.domain}" :
+      var.host_pattern == "prefix" ? "${var.environment}-${app}.${var.domain}" :
+      "${app}-${var.environment}.${var.domain}"
+    )
+  }
+
+  hubble_ui_exposures_resolved = {
+    for k, v in var.hubble_ui_exposures : k => merge(v, {
+      host = length(v.host) > 0 ? v.host : lookup(local._app_host, "hubble", "")
+    })
+  }
 }
 
 # ---------------------------------------------------------------------------

@@ -92,6 +92,11 @@ output "cert_manager_client_id" {
 
 # --- DNS ---
 
+output "hubble_ui_exposures_json" {
+  description = "Hubble UI exposures serialized as JSON (with auto-derived hosts applied)."
+  value       = jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled })
+}
+
 output "dns_zone_name" {
   description = "Name of the DNS zone (empty if no domain or dns_provider=cloudflare)."
   value       = var.domain != "" && var.dns_provider == "azure" ? azurerm_dns_zone.workload[0].name : ""

@@ -27,6 +27,46 @@ variable "domain" {
   default     = ""
 }
 
+# ---------------------------------------------------------------------------
+# Ingress — ADR 0014 multi-exposure model
+# ---------------------------------------------------------------------------
+
+variable "traefik_enabled" {
+  description = "Deploy Traefik ingress controller on the workload cluster. Required for any exposure (hubble_ui_exposures, etc.) to work."
+  type        = bool
+  default     = false
+}
+
+variable "ingress_allowed_ip_ranges" {
+  description = "IP ranges allowed inbound on ports 80/443 (NSG L4 filtering). Empty means public. Per-app L7 filtering is in each exposure's allowed_cidrs."
+  type        = list(string)
+  default     = []
+}
+
+variable "hubble_ui_exposures" {
+  description = "Hubble UI ingress exposures (ADR 0014). Requires traefik_enabled=true and network_dataplane=cilium-acns."
+  type = map(object({
+    enabled       = bool
+    host          = optional(string, "")
+    ingress_class = optional(string, "traefik")
+    allowed_cidrs = optional(string, "")
+    issuer        = optional(string, "letsencrypt-production")
+    basic_auth    = optional(bool, false)
+  }))
+  default = {}
+}
+
+variable "host_pattern" {
+  description = "How hostnames are constructed: subdomain (app.env.domain), prefix (env-app.domain), suffix (app-env.domain)."
+  type        = string
+  default     = "prefix"
+
+  validation {
+    condition     = contains(["subdomain", "prefix", "suffix"], var.host_pattern)
+    error_message = "host_pattern must be one of: subdomain, prefix, suffix."
+  }
+}
+
 variable "dns_provider" {
   description = "DNS backend: azure (creates Azure DNS Zone + Workload Identity) or cloudflare (uses external Cloudflare zone + API token stored in workload Key Vault). Only applies when domain is set."
   type        = string
