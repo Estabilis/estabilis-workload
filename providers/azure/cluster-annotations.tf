@@ -47,6 +47,7 @@ resource "kubernetes_secret_v1" "bridge" {
     "velero-client-id"           = var.velero_enabled ? azurerm_user_assigned_identity.velero[0].client_id : ""
     "dns-provider"               = var.domain != "" ? var.dns_provider : ""
     "domain"                     = var.domain
+    "cluster-name"               = azurerm_kubernetes_cluster.workload.name
     "cloudflare-zone-id"         = var.domain != "" && var.dns_provider == "cloudflare" ? var.cloudflare_zone_id : ""
     "letsencrypt-email"          = var.letsencrypt_email
     # ADR 0014 — exposure JSON as bridge data (non-sensitive configuration).
@@ -54,7 +55,7 @@ resource "kubernetes_secret_v1" "bridge" {
     # base64-encoded because helm --set-string can't handle raw JSON
     # (curly braces and commas are metacharacters). Same encoding as the
     # CLI uses on the hub — the child chart decodes with b64dec.
-    "traefik-enabled"            = tostring(var.traefik_enabled)
-    "hubble-ui-exposures"        = base64encode(jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled }))
+    "traefik-enabled"     = tostring(var.traefik_enabled)
+    "hubble-ui-exposures" = base64encode(jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled }))
   }
 }

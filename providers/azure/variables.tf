@@ -22,7 +22,7 @@ variable "location" {
 }
 
 variable "domain" {
-  description = "Domain name for the workload cluster. Leave empty if workload shares the platform domain."
+  description = "DNS zone root (e.g. estabilis.io). Must match the actual zone in Cloudflare or Azure DNS. Hostnames are derived as {app}.{cluster_name}.{domain}. Leave empty if workload has no DNS."
   type        = string
   default     = ""
 }
@@ -56,16 +56,6 @@ variable "hubble_ui_exposures" {
   default = {}
 }
 
-variable "host_pattern" {
-  description = "How hostnames are constructed: subdomain (app.env.domain), prefix (env-app.domain), suffix (app-env.domain)."
-  type        = string
-  default     = "prefix"
-
-  validation {
-    condition     = contains(["subdomain", "prefix", "suffix"], var.host_pattern)
-    error_message = "host_pattern must be one of: subdomain, prefix, suffix."
-  }
-}
 
 variable "dns_provider" {
   description = "DNS backend: azure (creates Azure DNS Zone + Workload Identity) or cloudflare (uses external Cloudflare zone + API token stored in workload Key Vault). Only applies when domain is set."

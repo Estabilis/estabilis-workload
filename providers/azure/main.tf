@@ -73,16 +73,10 @@ locals {
 
   tags = merge(local.caf_tags, var.extra_tags)
 
-  # --- ADR 0014: exposure host auto-derivation (same logic as platform) ---
-  is_prod_env = contains(["prod", "prd", "production"], var.environment)
-
+  # --- Host derivation: {app}.{cluster_name}.{domain} ---
   _app_host = {
-    for app in ["hubble"] : app => (
-      local.is_prod_env ? "${app}.${var.domain}" :
-      var.host_pattern == "subdomain" ? "${app}.${var.environment}.${var.domain}" :
-      var.host_pattern == "prefix" ? "${var.environment}-${app}.${var.domain}" :
-      "${app}-${var.environment}.${var.domain}"
-    )
+    for app in ["hubble"] : app =>
+    "${app}.${azurerm_kubernetes_cluster.workload.name}.${var.domain}"
   }
 
   hubble_ui_exposures_resolved = {
