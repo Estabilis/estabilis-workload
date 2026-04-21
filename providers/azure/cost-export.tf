@@ -75,7 +75,12 @@ resource "azurerm_subscription_cost_management_export" "daily" {
   subscription_id              = data.azurerm_subscription.current.id
   recurrence_type              = "Daily"
   recurrence_period_start_date = "${formatdate("YYYY-MM-DD", plantimestamp())}T00:00:00Z"
-  recurrence_period_end_date   = "${formatdate("YYYY", plantimestamp()) + 10}-${formatdate("MM-DD", plantimestamp())}T00:00:00Z"
+  # 87600h = 10 years. `timeadd` keeps the full timestamp RFC3339
+  # well-formed at `terraform validate` time (plantimestamp() →
+  # 0001 epoch during validate → year 0011 via timeadd → parses).
+  # Previous pattern (`formatdate("YYYY", ...) + 10`) produced
+  # "11-01-01T00:00:00Z" — rejected by the azurerm provider.
+  recurrence_period_end_date = "${formatdate("YYYY-MM-DD", timeadd(plantimestamp(), "87600h"))}T00:00:00Z"
 
   export_data_storage_location {
     container_id     = azurerm_storage_container.cost_exports[0].id
