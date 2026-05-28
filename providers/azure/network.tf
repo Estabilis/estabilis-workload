@@ -50,6 +50,11 @@ resource "azurerm_subnet" "aks_pods" {
 # ---------------------------------------------------------------------------
 
 resource "azurerm_role_assignment" "aks_network_contributor" {
+  # Azure auto-creates this assignment for UAMI clusters during provisioning
+  # (the cluster control plane needs Network Contributor on the BYO subnet to
+  # manage Load Balancers, NAT, etc). Gating to SystemAssigned mode only
+  # avoids the 409 RoleAssignmentExists conflict on first apply in UAMI mode.
+  count                = local.use_uami ? 0 : 1
   scope                = local.subnet_nodes_id
   role_definition_name = "Network Contributor"
   principal_id         = local.aks_identity_principal_id
