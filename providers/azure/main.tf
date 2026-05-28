@@ -132,6 +132,11 @@ locals {
   use_uami          = var.enable_private_cluster && !contains(["System", "None", ""], var.private_dns_zone_id)
   aks_identity_type = local.use_uami ? "UserAssigned" : "SystemAssigned"
 
+  # AKS principal_id — UAMI exposes via the UAMI resource; SystemAssigned via
+  # the cluster identity block. Used by role assignments that need to grant
+  # rights to the AKS identity (e.g. Network Contributor on the node subnet).
+  aks_identity_principal_id = local.use_uami ? azurerm_user_assigned_identity.aks[0].principal_id : azurerm_kubernetes_cluster.workload.identity[0].principal_id
+
   authorized_ips = distinct(concat(var.authorized_ip_ranges, [local.operator_ip], local.nat_gateway_egress_ips_cidr))
 
   # Centralized firewall rules — auto-detected + global + per-resource
