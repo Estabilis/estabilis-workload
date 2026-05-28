@@ -1164,3 +1164,14 @@ variable "deployment_id" {
   type        = string
   default     = ""
 }
+
+variable "node_resource_group" {
+  description = "Override for the auto-generated AKS node resource group name. Azure default is MC_<rg-name>_<cluster-name>_<region> which can exceed the 80-char limit when both rg-name and cluster-name include long region names like brazilsouth. Set to a shorter explicit name when default exceeds the limit. Empty (default) lets Azure compose the default name."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = length(var.node_resource_group) <= 80
+    error_message = "node_resource_group must be at most 80 characters (Azure limit)."
+  }
+}

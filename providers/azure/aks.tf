@@ -38,6 +38,7 @@ resource "azurerm_kubernetes_cluster" "workload" {
   name                         = "aks-${local.base_name}"
   location                     = azurerm_resource_group.workload.location
   resource_group_name          = azurerm_resource_group.workload.name
+  node_resource_group          = var.node_resource_group != "" ? var.node_resource_group : null
   dns_prefix                   = "aks-${local.base_name}"
   kubernetes_version           = var.kubernetes_version
   sku_tier                     = var.sku_tier
