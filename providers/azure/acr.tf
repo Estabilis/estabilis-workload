@@ -173,19 +173,30 @@ resource "azurerm_container_registry_cache_rule" "dockerhub" {
 # Eliminates public access, ACR reachable only via VNet
 # ---------------------------------------------------------------------------
 
+# Local-PDZ branch — created only when ACR PE is on AND no external_pdz_acr_id
+# was provided (legacy mode: self-managed PDZ inside the workload RG, linked
+# to the internal VNet). When external_pdz_acr_id is set, the canonical PDZ
+# from the hub network repo is reused (preferred under network_existing_enabled).
+locals {
+  acr_pe_local_pdz = var.acr_enabled && local.acr_is_premium && var.acr_private_endpoint_enabled && var.external_pdz_acr_id == ""
+}
+
 resource "azurerm_private_dns_zone" "acr" {
-  count               = var.acr_enabled && local.acr_is_premium && var.acr_private_endpoint_enabled ? 1 : 0
+  count               = local.acr_pe_local_pdz ? 1 : 0
   name                = "privatelink.azurecr.io"
   resource_group_name = azurerm_resource_group.workload.name
   tags                = local.tags
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "acr" {
-  count                 = var.acr_enabled && local.acr_is_premium && var.acr_private_endpoint_enabled ? 1 : 0
+  # Only when local PDZ is used AND we own the VNet (legacy mode). In BYO
+  # Network mode with external_pdz_acr_id, the hub network repo owns both
+  # the PDZ and its vnet_links.
+  count                 = local.acr_pe_local_pdz && !var.network_existing_enabled ? 1 : 0
   name                  = "acr-dns-link"
   resource_group_name   = azurerm_resource_group.workload.name
   private_dns_zone_name = azurerm_private_dns_zone.acr[0].name
-  virtual_network_id    = azurerm_virtual_network.workload.id
+  virtual_network_id    = local.vnet_id
   tags                  = local.tags
 }
 
@@ -194,7 +205,7 @@ resource "azurerm_private_endpoint" "acr" {
   name                = "pe-${local.base_name}-acr"
   location            = azurerm_resource_group.workload.location
   resource_group_name = azurerm_resource_group.workload.name
-  subnet_id           = azurerm_subnet.aks_nodes.id
+  subnet_id           = local.subnet_nodes_id
   tags                = local.tags
 
   private_service_connection {
@@ -206,6 +217,6 @@ resource "azurerm_private_endpoint" "acr" {
 
   private_dns_zone_group {
     name                 = "acr-dns-group"
-    private_dns_zone_ids = [azurerm_private_dns_zone.acr[0].id]
+    private_dns_zone_ids = var.external_pdz_acr_id != "" ? [var.external_pdz_acr_id] : [azurerm_private_dns_zone.acr[0].id]
   }
 }

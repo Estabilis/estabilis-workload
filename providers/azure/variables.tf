@@ -32,7 +32,13 @@ variable "domain" {
 # ---------------------------------------------------------------------------
 
 variable "traefik_enabled" {
-  description = "Deploy Traefik ingress controller on the workload cluster. Required for any exposure (hubble_ui_exposures, etc.) to work."
+  description = "Deploy Traefik ingress controller on the workload cluster (public — Azure LB with PIP). Required for any public exposure (hubble_ui_exposures, etc.) to work."
+  type        = bool
+  default     = false
+}
+
+variable "traefik_internal_enabled" {
+  description = "Deploy a second Traefik ingress controller in internal mode (Azure Internal LoadBalancer, no PIP). Use when apps must be reached only via NVA/FortiGate DNAT or peered VNets. Parity with estabilis-platform. Can coexist with traefik_enabled (two ingress classes: 'traefik' + 'traefik-internal')."
   type        = bool
   default     = false
 }
@@ -114,9 +120,9 @@ variable "subscription_id" {
 # ---------------------------------------------------------------------------
 
 variable "kubernetes_version" {
-  description = "Kubernetes version for the AKS cluster."
+  description = "Kubernetes version for the AKS cluster. v3.0.0: default bumped from 1.34 → 1.35 (aligns with platform recommended). Consumers pinning explicitly are unaffected."
   type        = string
-  default     = "1.34"
+  default     = "1.35"
 }
 
 variable "auto_upgrade_channel" {
@@ -344,14 +350,37 @@ variable "aks_role_assignments" {
 }
 
 variable "network_dataplane" {
-  description = "Network dataplane for AKS. Options: default (Azure), cilium (managed, no Hubble), cilium-acns (managed + Hubble/FQDN, ~$70/mo), byo-cni (self-managed Cilium + Hubble, DESTROYS AND RECREATES CLUSTER)."
+  description = "Network dataplane for AKS. Options: default (Azure), cilium (managed, no Hubble), cilium-acns (managed + Hubble/FQDN, ~$70/mo), byo-cni (self-managed Cilium + Hubble, DESTROYS AND RECREATES CLUSTER). v3.0.0 BREAKING: default changed from 'default' to 'cilium-acns'. Set explicitly to 'default' to preserve legacy behavior."
   type        = string
-  default     = "default"
+  default     = "cilium-acns"
 
   validation {
     condition     = contains(["default", "cilium", "cilium-acns", "byo-cni"], var.network_dataplane)
     error_message = "Network dataplane must be one of: default, cilium, cilium-acns, byo-cni."
   }
+}
+
+variable "network_plugin_mode" {
+  description = "Azure CNI plugin mode. Options: 'overlay' (default — pods from pod_cidr, single nodes subnet), 'pod-subnet' (Azure CNI Pod Subnet — pods from dedicated pod_subnet_id, GA flat networking per Microsoft Learn 2026-05-13), null (BYO CNI — automatic when network_dataplane='byo-cni'). v3.0.0: default 'overlay' preserves backward compat."
+  type        = string
+  default     = "overlay"
+
+  validation {
+    condition     = var.network_plugin_mode == null || contains(["overlay", "pod-subnet"], var.network_plugin_mode)
+    error_message = "network_plugin_mode must be 'overlay', 'pod-subnet', or null."
+  }
+}
+
+variable "acns_observability_enabled" {
+  description = "Enable Advanced Container Networking Services (ACNS) observability (Hubble flow logs + metrics). Only applies when network_dataplane=cilium-acns. Disabling reduces visibility but saves ~30% of ACNS cost."
+  type        = bool
+  default     = true
+}
+
+variable "acns_security_enabled" {
+  description = "Enable Advanced Container Networking Services (ACNS) security (FQDN filtering via Cilium NetworkPolicies). Only applies when network_dataplane=cilium-acns. Disabling removes FQDN-based egress control."
+  type        = bool
+  default     = true
 }
 
 variable "byo_cni_i_understand_this_destroys_the_cluster" {
@@ -877,6 +906,261 @@ variable "hub_ca_certificate" {
 
 variable "hub_egress_ip" {
   description = "Static outbound IP of the platform hub NAT Gateway. Get from: terraform output -raw nat_gateway_public_ip (estabilis-platform). When hub_registration_enabled = true, this IP is automatically added to authorized_ip_ranges of this AKS API server — remove it from authorized_ip_ranges/firewall_allowed_ips to avoid duplication."
+  type        = string
+  default     = ""
+}
+
+# ===========================================================================
+# v3.0.0 — BYO Network (consume external VNet/subnet/NAT GW from another repo)
+# ===========================================================================
+
+variable "network_existing_enabled" {
+  description = "When true, consume external VNet/subnet/NAT GW (no auto-create). Requires existing_vnet_id and existing_subnet_nodes_id."
+  type        = bool
+  default     = false
+}
+
+variable "existing_vnet_id" {
+  description = "ARM ID of external VNet (when network_existing_enabled=true)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_vnet_name" {
+  description = "Name of external VNet (when network_existing_enabled=true)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_vnet_resource_group_name" {
+  description = "Resource group of external VNet (when network_existing_enabled=true)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_subnet_nodes_id" {
+  description = "ARM ID of external subnet for AKS nodes (when network_existing_enabled=true)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_subnet_pods_id" {
+  description = "ARM ID of external subnet for AKS pods (overlay mode → leave empty)."
+  type        = string
+  default     = ""
+}
+
+variable "external_nat_gateway_egress_ips" {
+  description = "List of NAT Gateway public IPs (from external network repo, no /32 suffix). Added to firewall_base_ips and api_server authorized_ip_ranges when network_existing_enabled=true."
+  type        = list(string)
+  default     = []
+}
+
+variable "outbound_type" {
+  description = "AKS outbound type. Options: userAssignedNATGateway (default — works with internal or external NAT GW), userDefinedRouting (requires UDR with 0.0.0.0/0 in subnet — only valid when network_existing_enabled=true), loadBalancer."
+  type        = string
+  default     = "userAssignedNATGateway"
+
+  validation {
+    condition     = contains(["userAssignedNATGateway", "userDefinedRouting", "loadBalancer"], var.outbound_type)
+    error_message = "outbound_type must be one of: userAssignedNATGateway, userDefinedRouting, loadBalancer."
+  }
+}
+
+# ===========================================================================
+# v3.0.0 — Naming (workload_domain replaces hardcoded "workload" in base_name)
+# ===========================================================================
+
+variable "workload_domain" {
+  description = "Replaces 'workload' in resource naming pattern. Default 'workload' preserves backward compat. Override to e.g. 'crypto', 'payments' for multi-cluster-per-region setups."
+  type        = string
+  default     = "workload"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]*$", var.workload_domain))
+    error_message = "workload_domain must be lowercase alphanumeric with hyphens, starting with a letter."
+  }
+}
+
+# ===========================================================================
+# v3.0.0 — Private cluster + UAMI + external PDZ (parity with estabilis-platform)
+# ===========================================================================
+
+variable "enable_private_cluster" {
+  description = "When true, AKS API server is private (PE-only access via PDZ). Requires private_dns_zone_id."
+  type        = bool
+  default     = false
+}
+
+variable "private_dns_zone_id" {
+  description = "ARM ID of Private DNS Zone for AKS API server (e.g. privatelink.<region>.azmk8s.io). Required when enable_private_cluster=true. Use 'System' to let AKS manage the PDZ inside MC_ RG."
+  type        = string
+  default     = ""
+}
+
+variable "private_cluster_public_fqdn_enabled" {
+  description = "When false, AKS does not expose public FQDN for the private cluster. Keep false for full lockdown."
+  type        = bool
+  default     = false
+}
+
+# ===========================================================================
+# v3.0.0 — PE-only PaaS (granular: 4 vars, one per resource)
+# ===========================================================================
+
+variable "keyvault_private_endpoint_enabled" {
+  description = "Enable Private Endpoint for the workload Key Vault. Disables public network access. Requires external_pdz_vaultcore_id."
+  type        = bool
+  default     = false
+}
+
+variable "tfstate_private_endpoint_enabled" {
+  description = "Enable Private Endpoint for the tfstate Storage Account. Requires external_pdz_blob_id."
+  type        = bool
+  default     = false
+}
+
+variable "velero_private_endpoint_enabled" {
+  description = "Enable Private Endpoint for the Velero backup Storage Account. Requires external_pdz_blob_id and velero_enabled=true."
+  type        = bool
+  default     = false
+}
+
+variable "cost_exports_private_endpoint_enabled" {
+  description = "Enable Private Endpoint for the cost exports Storage Account. Requires external_pdz_blob_id and cost_export_enabled=true."
+  type        = bool
+  default     = false
+}
+
+variable "external_pdz_blob_id" {
+  description = "ARM ID of canonical Private DNS Zone privatelink.blob.core.windows.net (from hub network repo). Required when any *storage*_private_endpoint_enabled=true."
+  type        = string
+  default     = ""
+}
+
+variable "external_pdz_vaultcore_id" {
+  description = "ARM ID of canonical Private DNS Zone privatelink.vaultcore.azure.net (from hub network repo). Required when keyvault_private_endpoint_enabled=true."
+  type        = string
+  default     = ""
+}
+
+variable "external_pdz_acr_id" {
+  description = "ARM ID of canonical Private DNS Zone privatelink.azurecr.io (from hub network repo). Required when acr_private_endpoint_enabled=true under network_existing_enabled mode."
+  type        = string
+  default     = ""
+}
+
+# ===========================================================================
+# v3.0.0 — Cross-region observability + misc
+# ===========================================================================
+
+variable "external_log_analytics_workspace_id" {
+  description = "ARM ID of an additional Log Analytics Workspace (e.g. central observability LAW). When set, an additional azurerm_monitor_diagnostic_setting is created pointing AKS audit logs to this LAW (does NOT replace the local LAW)."
+  type        = string
+  default     = ""
+}
+
+variable "workload_regular_min_count" {
+  description = "Minimum nodes in the regular workload pool (when workload_regular_enabled=true). Default 0 keeps backward compat (parity with platform module)."
+  type        = number
+  default     = 0
+}
+
+variable "shared_hub_secrets_prefix" {
+  description = "Optional prefix for hub KV secret names (e.g. 'env-stg'). Reserved for future use."
+  type        = string
+  default     = ""
+}
+
+# ===========================================================================
+# v3.0.0 — Diagnostic categories (customizable)
+# One log-categories var + one metric-categories var per resource-type, shared
+# between local and external pairs. AKS gets two extra vars to preserve the
+# legacy divergence (kube-apiserver only on external; metrics only on external).
+# Defaults reproduce the previously-hardcoded category lists — zero diff in
+# plan for existing consumers.
+# ===========================================================================
+
+# --- AKS ---
+
+variable "aks_diagnostic_log_categories" {
+  description = "Log categories enabled on the AKS diagnostic setting (both local and external LAW). Default mirrors Microsoft Learn AKS reference categories."
+  type        = list(string)
+  default     = ["kube-audit-admin", "kube-controller-manager", "kube-scheduler", "cluster-autoscaler", "guard"]
+}
+
+variable "aks_diagnostic_log_categories_external_extra" {
+  description = "Extra log categories enabled ONLY on the external AKS diagnostic setting. Default adds kube-apiserver (heavyweight; goes only to central LAW for compliance audit, not flooded into local LAW)."
+  type        = list(string)
+  default     = ["kube-apiserver"]
+}
+
+variable "aks_diagnostic_metric_categories" {
+  description = "Metric categories enabled on the AKS external diagnostic setting. Local pair currently emits no metrics by default — pass [] to keep, [\"AllMetrics\"] to add."
+  type        = list(string)
+  default     = ["AllMetrics"]
+}
+
+variable "aks_diagnostic_metric_categories_local" {
+  description = "Metric categories on AKS LOCAL diagnostic setting. Default empty (parity with prior behavior)."
+  type        = list(string)
+  default     = []
+}
+
+# --- Key Vault ---
+
+variable "keyvault_diagnostic_log_categories" {
+  description = "Log categories on Key Vault diagnostic settings (both pairs)."
+  type        = list(string)
+  default     = ["AuditEvent", "AzurePolicyEvaluationDetails"]
+}
+
+variable "keyvault_diagnostic_metric_categories" {
+  description = "Metric categories on Key Vault diagnostic settings (both pairs)."
+  type        = list(string)
+  default     = ["AllMetrics"]
+}
+
+# --- Storage Accounts (shared by tfstate + velero + cost; schema is homogeneous) ---
+
+variable "storage_diagnostic_log_categories" {
+  description = "Log categories on all Storage Account blob diagnostic settings (tfstate, velero, cost). Applies to both local and external pairs."
+  type        = list(string)
+  default     = ["StorageRead", "StorageWrite", "StorageDelete"]
+}
+
+variable "storage_diagnostic_metric_categories" {
+  description = "Metric categories on all Storage Account blob diagnostic settings."
+  type        = list(string)
+  default     = ["Transaction"]
+}
+
+# --- ACR ---
+
+variable "acr_diagnostic_log_categories" {
+  description = "Log categories on ACR diagnostic settings (both pairs)."
+  type        = list(string)
+  default     = ["ContainerRegistryRepositoryEvents", "ContainerRegistryLoginEvents"]
+}
+
+variable "acr_diagnostic_metric_categories" {
+  description = "Metric categories on ACR diagnostic settings (both pairs)."
+  type        = list(string)
+  default     = ["AllMetrics"]
+}
+
+# ===========================================================================
+# v3.0.0 — Platform parity: split-horizon DNS + deployment identification
+# ===========================================================================
+
+variable "internal_domain" {
+  description = "DNS zone root for INTERNAL hostnames (e.g. azure.estabilis-transfero.dev). When set, exposures with profile key='internal' derive hosts as {app}.{cluster_name}.{internal_domain} instead of {app}.{cluster_name}.{domain}. Enables split-horizon DNS: external exposures keep public domain (TLS via cert-manager Let's Encrypt) while internal exposures use private subdomain (no public TLS log leakage). Empty disables split-horizon (all exposures use var.domain)."
+  type        = string
+  default     = ""
+}
+
+variable "deployment_id" {
+  description = "Unique identifier of this workload deployment (e.g. crypto-azure-brazilsouth-stg). Maps to workloads/{deployment_id}/ in the client GitOps repo. When set, bridge.cluster-name is composed as $${name_prefix}-$${deployment_id} (parity with platform). When empty, falls back to AKS resource name (legacy behavior — current default)."
   type        = string
   default     = ""
 }

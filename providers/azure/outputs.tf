@@ -128,18 +128,30 @@ output "cost_export_storage_access_key" {
 # --- Network (for VNet peering with platform) ---
 
 output "vnet_id" {
-  description = "Virtual Network ID (for VNet peering with platform cluster)."
-  value       = azurerm_virtual_network.workload.id
+  description = "Virtual Network ID — internal when network_existing_enabled=false, external var.existing_vnet_id when true. Use for peering with platform cluster."
+  value       = local.vnet_id
 }
 
 output "vnet_name" {
-  description = "Virtual Network name."
-  value       = azurerm_virtual_network.workload.name
+  description = "Virtual Network name (internal or external depending on network_existing_enabled)."
+  value       = local.vnet_name
 }
 
 output "subnet_nodes_id" {
-  description = "Subnet ID for AKS nodes (for private endpoints)."
-  value       = azurerm_subnet.aks_nodes.id
+  description = "Subnet ID for AKS nodes (internal or external). Use for private endpoints in BYO Network mode."
+  value       = local.subnet_nodes_id
+}
+
+# --- v3.0.0 — Extra effective-value outputs (less ambiguous than aliased) ---
+
+output "vnet_id_effective" {
+  description = "Effective VNet ID after resolution of internal-vs-external mode (alias for vnet_id, explicitly documents intent)."
+  value       = local.vnet_id
+}
+
+output "subnet_nodes_id_effective" {
+  description = "Effective AKS nodes subnet ID after resolution of internal-vs-external mode."
+  value       = local.subnet_nodes_id
 }
 
 # --- ACR ---
@@ -167,8 +179,13 @@ output "acr_ci_principal_id" {
 # --- NAT Gateway ---
 
 output "nat_gateway_public_ip" {
-  description = "Static outbound IP address (NAT Gateway)."
-  value       = var.nat_gateway_enabled ? azurerm_public_ip.nat_gateway[0].ip_address : null
+  description = "Static outbound IP address (NAT Gateway) — first egress IP, internal or external. null when no NAT GW is in scope."
+  value       = length(local.nat_gateway_egress_ips) > 0 ? local.nat_gateway_egress_ips[0] : null
+}
+
+output "nat_gateway_public_ips" {
+  description = "All effective NAT Gateway egress IPs (internal OR external list)."
+  value       = local.nat_gateway_egress_ips
 }
 
 # --- Metadata (for platform registration) ---
@@ -193,4 +210,11 @@ output "location" {
 output "name_prefix" {
   description = "Name prefix used for all resources."
   value       = var.name_prefix
+}
+
+# --- v3.0.0 — Private cluster FQDN ---
+
+output "private_fqdn" {
+  description = "Private FQDN of the AKS API server (only set when enable_private_cluster=true)."
+  value       = var.enable_private_cluster ? azurerm_kubernetes_cluster.workload.private_fqdn : null
 }

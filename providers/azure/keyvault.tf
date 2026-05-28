@@ -13,13 +13,16 @@ resource "azurerm_key_vault" "workload" {
   soft_delete_retention_days = var.keyvault_soft_delete_days
   purge_protection_enabled   = var.keyvault_purge_protection
 
+  # PE mode disables public access; legacy mode keeps it on with firewall.
+  public_network_access_enabled = !var.keyvault_private_endpoint_enabled
+
   dynamic "network_acls" {
-    for_each = var.firewall_enabled ? [1] : []
+    for_each = !var.keyvault_private_endpoint_enabled && var.firewall_enabled ? [1] : []
     content {
       default_action             = "Deny"
       bypass                     = "AzureServices"
       ip_rules                   = local.firewall_keyvault_ips
-      virtual_network_subnet_ids = concat(local.firewall_base_subnet_ids, [azurerm_subnet.aks_pods.id])
+      virtual_network_subnet_ids = concat(local.firewall_base_subnet_ids, local.pe_extra_subnet_ids)
     }
   }
 
@@ -54,4 +57,38 @@ resource "azurerm_key_vault_secret" "cloudflare_api_token" {
   key_vault_id = azurerm_key_vault.workload[0].id
 
   depends_on = [azurerm_role_assignment.terraform_kv_officer]
+}
+
+# ---------------------------------------------------------------------------
+# v3.0.0 — Private Endpoint for Key Vault (canonical PDZ from hub network repo)
+# Toggle: keyvault_private_endpoint_enabled = true
+# Requires: external_pdz_vaultcore_id
+# ---------------------------------------------------------------------------
+
+resource "azurerm_private_endpoint" "keyvault" {
+  count               = var.keyvault_enabled && var.keyvault_private_endpoint_enabled ? 1 : 0
+  name                = "pe-${local.base_name}-vault"
+  location            = azurerm_resource_group.workload.location
+  resource_group_name = azurerm_resource_group.workload.name
+  subnet_id           = local.subnet_nodes_id
+  tags                = local.tags
+
+  private_service_connection {
+    name                           = "psc-${local.base_name}-vault"
+    private_connection_resource_id = azurerm_key_vault.workload[0].id
+    subresource_names              = ["vault"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "default"
+    private_dns_zone_ids = [var.external_pdz_vaultcore_id]
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.external_pdz_vaultcore_id != ""
+      error_message = "keyvault_private_endpoint_enabled=true requires external_pdz_vaultcore_id (canonical PDZ privatelink.vaultcore.azure.net from hub network repo)."
+    }
+  }
 }

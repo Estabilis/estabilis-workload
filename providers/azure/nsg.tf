@@ -1,10 +1,12 @@
 # ---------------------------------------------------------------------------
 # Network Security Group — defense in depth for AKS node subnet
 # Toggle via: nsg_enabled = false
+# Skipped when network_existing_enabled = true (external network repo owns
+# NSG/route table on the subnet).
 # ---------------------------------------------------------------------------
 
 resource "azurerm_network_security_group" "aks_nodes" {
-  count               = var.nsg_enabled ? 1 : 0
+  count               = !var.network_existing_enabled && var.nsg_enabled ? 1 : 0
   name                = "nsg-${local.base_name}"
   location            = azurerm_resource_group.workload.location
   resource_group_name = azurerm_resource_group.workload.name
@@ -12,8 +14,8 @@ resource "azurerm_network_security_group" "aks_nodes" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "aks_nodes" {
-  count                     = var.nsg_enabled ? 1 : 0
-  subnet_id                 = azurerm_subnet.aks_nodes.id
+  count                     = !var.network_existing_enabled && var.nsg_enabled ? 1 : 0
+  subnet_id                 = azurerm_subnet.aks_nodes[0].id
   network_security_group_id = azurerm_network_security_group.aks_nodes[0].id
 }
 
@@ -27,7 +29,7 @@ locals {
 }
 
 resource "azurerm_network_security_rule" "ingress_https" {
-  count                       = var.nsg_enabled && var.traefik_enabled ? 1 : 0
+  count                       = !var.network_existing_enabled && var.nsg_enabled && (var.traefik_enabled || var.traefik_internal_enabled) ? 1 : 0
   name                        = "AllowHTTPSInbound"
   priority                    = 200
   direction                   = "Inbound"
@@ -43,7 +45,7 @@ resource "azurerm_network_security_rule" "ingress_https" {
 }
 
 resource "azurerm_network_security_rule" "ingress_http" {
-  count                       = var.nsg_enabled && var.traefik_enabled ? 1 : 0
+  count                       = !var.network_existing_enabled && var.nsg_enabled && (var.traefik_enabled || var.traefik_internal_enabled) ? 1 : 0
   name                        = "AllowHTTPInbound"
   priority                    = 201
   direction                   = "Inbound"

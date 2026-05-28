@@ -41,8 +41,9 @@ locals {
     prod = "prd"
   }[var.environment]
 
-  # Full base name for standard resources: estabilis-workload-hml-eastus2
-  base_name = "${var.name_prefix}-workload-${local.env_code}-${var.location}"
+  # Full base name for standard resources: estabilis-{workload_domain}-{env}-{region}
+  # Default workload_domain="workload" preserves backward compat (v2.x).
+  base_name = "${var.name_prefix}-${var.workload_domain}-${local.env_code}-${var.location}"
 
   # CAF tags — automatic + optional (empty values filtered out)
   caf_tags = {
@@ -73,15 +74,28 @@ locals {
 
   tags = merge(local.caf_tags, var.extra_tags)
 
-  # --- Host derivation: {app}.{cluster_name}.{domain} ---
+  # --- Host derivation: {app}.{cluster_name}.{domain} (or {internal_domain} for "internal" profile) ---
+  # v3.0.0 platform-parity: split-horizon DNS via var.internal_domain. When set,
+  # exposures keyed "internal" derive hosts under internal_domain; all other
+  # keys keep domain. Explicit host always wins over auto-derivation.
+  _use_internal_domain = var.internal_domain != ""
+
   _app_host = {
     for app in ["hubble"] : app =>
     "${app}.${azurerm_kubernetes_cluster.workload.name}.${var.domain}"
   }
+  _app_host_internal = {
+    for app in ["hubble"] : app =>
+    "${app}.${azurerm_kubernetes_cluster.workload.name}.${var.internal_domain}"
+  }
 
   hubble_ui_exposures_resolved = {
     for k, v in var.hubble_ui_exposures : k => merge(v, {
-      host = length(v.host) > 0 ? v.host : lookup(local._app_host, "hubble", "")
+      host = length(v.host) > 0 ? v.host : (
+        local._use_internal_domain && k == "internal"
+        ? lookup(local._app_host_internal, "hubble", "")
+        : lookup(local._app_host, "hubble", "")
+      )
     })
   }
 }
@@ -95,19 +109,40 @@ data "http" "operator_ip" {
 }
 
 locals {
-  operator_ip    = "${chomp(data.http.operator_ip.response_body)}/32"
-  nat_gateway_ip = var.nat_gateway_enabled ? "${azurerm_public_ip.nat_gateway[0].ip_address}/32" : null
-  authorized_ips = distinct(concat(var.authorized_ip_ranges, [local.operator_ip]))
+  operator_ip = "${chomp(data.http.operator_ip.response_body)}/32"
+
+  # --- v3.0.0 — Network/subnet refs (internal OR external) ---
+  vnet_id      = var.network_existing_enabled ? var.existing_vnet_id : (length(azurerm_virtual_network.workload) > 0 ? azurerm_virtual_network.workload[0].id : "")
+  vnet_name    = var.network_existing_enabled ? var.existing_vnet_name : (length(azurerm_virtual_network.workload) > 0 ? azurerm_virtual_network.workload[0].name : "")
+  vnet_rg_name = var.network_existing_enabled ? var.existing_vnet_resource_group_name : azurerm_resource_group.workload.name
+
+  subnet_nodes_id = var.network_existing_enabled ? var.existing_subnet_nodes_id : (length(azurerm_subnet.aks_nodes) > 0 ? azurerm_subnet.aks_nodes[0].id : "")
+  subnet_pods_id  = var.network_existing_enabled ? var.existing_subnet_pods_id : (length(azurerm_subnet.aks_pods) > 0 ? azurerm_subnet.aks_pods[0].id : "")
+
+  # PE extra subnet — aks_pods exists only in legacy (auto-VNet) mode
+  pe_extra_subnet_ids = var.network_existing_enabled ? [] : (length(azurerm_subnet.aks_pods) > 0 ? [azurerm_subnet.aks_pods[0].id] : [])
+
+  # --- v3.0.0 — NAT Gateway egress IPs (internal OR external) ---
+  nat_gateway_egress_ips = var.network_existing_enabled ? var.external_nat_gateway_egress_ips : (
+    var.nat_gateway_enabled && length(azurerm_public_ip.nat_gateway) > 0 ? [azurerm_public_ip.nat_gateway[0].ip_address] : []
+  )
+  nat_gateway_egress_ips_cidr = [for ip in local.nat_gateway_egress_ips : "${ip}/32"]
+
+  # --- v3.0.0 — AKS identity mode (UAMI when external PDZ) ---
+  use_uami          = var.enable_private_cluster && !contains(["System", "None", ""], var.private_dns_zone_id)
+  aks_identity_type = local.use_uami ? "UserAssigned" : "SystemAssigned"
+
+  authorized_ips = distinct(concat(var.authorized_ip_ranges, [local.operator_ip], local.nat_gateway_egress_ips_cidr))
 
   # Centralized firewall rules — auto-detected + global + per-resource
   firewall_base_ips = distinct(concat(
     [local.operator_ip],
-    var.nat_gateway_enabled ? [local.nat_gateway_ip] : [],
+    local.nat_gateway_egress_ips_cidr,
     var.firewall_allowed_ips,
   ))
 
   firewall_base_subnet_ids = distinct(concat(
-    [azurerm_subnet.aks_nodes.id],
+    [local.subnet_nodes_id],
     var.firewall_allowed_subnet_ids,
   ))
 

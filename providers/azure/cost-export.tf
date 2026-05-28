@@ -20,6 +20,10 @@ resource "azurerm_storage_account" "cost_exports" {
   shared_access_key_enabled       = true # required by OpenCost cloud-integration
   allow_nested_items_to_be_public = false
 
+  # PE mode disables public access; legacy mode keeps it on (Allow then locked
+  # to Deny via azurerm_storage_account_network_rules after CostMgmt export).
+  public_network_access_enabled = !var.cost_exports_private_endpoint_enabled
+
   network_rules {
     default_action = "Allow"
     bypass         = ["AzureServices"]
@@ -45,12 +49,47 @@ resource "azurerm_storage_account" "cost_exports" {
 }
 
 resource "azurerm_storage_account_network_rules" "cost_exports" {
-  count              = var.cost_export_enabled ? 1 : 0
+  # Skipped in PE mode (public access already off via the SA itself).
+  count              = var.cost_export_enabled && !var.cost_exports_private_endpoint_enabled ? 1 : 0
   storage_account_id = azurerm_storage_account.cost_exports[0].id
   default_action     = "Deny"
   bypass             = ["AzureServices"]
 
   depends_on = [azurerm_subscription_cost_management_export.daily]
+}
+
+# ---------------------------------------------------------------------------
+# v3.0.0 — Private Endpoint for Cost Exports Storage (canonical PDZ from hub)
+# Toggle: cost_exports_private_endpoint_enabled = true
+# Requires: external_pdz_blob_id AND cost_export_enabled = true
+# ---------------------------------------------------------------------------
+
+resource "azurerm_private_endpoint" "cost_exports" {
+  count               = var.cost_export_enabled && var.cost_exports_private_endpoint_enabled ? 1 : 0
+  name                = "pe-${local.base_name}-cost"
+  location            = azurerm_resource_group.workload.location
+  resource_group_name = azurerm_resource_group.workload.name
+  subnet_id           = local.subnet_nodes_id
+  tags                = local.tags
+
+  private_service_connection {
+    name                           = "psc-${local.base_name}-cost"
+    private_connection_resource_id = azurerm_storage_account.cost_exports[0].id
+    subresource_names              = ["blob"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "default"
+    private_dns_zone_ids = [var.external_pdz_blob_id]
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.external_pdz_blob_id != ""
+      error_message = "cost_exports_private_endpoint_enabled=true requires external_pdz_blob_id (canonical PDZ privatelink.blob.core.windows.net from hub network repo)."
+    }
+  }
 }
 
 resource "azurerm_storage_container" "cost_exports" {
