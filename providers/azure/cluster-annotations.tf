@@ -63,6 +63,9 @@ resource "kubernetes_secret_v1" "bridge" {
     # CLI uses on the hub — the child chart decodes with b64dec.
     "traefik-enabled"          = tostring(var.traefik_enabled)
     "traefik-internal-enabled" = tostring(var.traefik_internal_enabled)
-    "hubble-ui-exposures"      = base64encode(jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled }))
+    # Fixed ILB IP for traefik-internal (NVA/FortiGate topology). Empty in the
+    # NAT-Gateway topology → operator drops the annotation → ILB stays dynamic.
+    "traefik-internal-lb-ip" = var.traefik_internal_lb_ip
+    "hubble-ui-exposures"    = base64encode(jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled }))
   }
 }

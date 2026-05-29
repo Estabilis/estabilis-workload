@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-05-29
+
+### Added
+
+- **`var.traefik_internal_lb_ip`** — fixed private IP for the Traefik internal
+  LoadBalancer (Azure ILB), emitted as the bridge annotation
+  `estabilis.io/bridge.traefik-internal-lb-ip`. The workload-bootstrap
+  `traefik-internal` ApplicationSet consumes it per-cluster (operator >= v0.9.0 /
+  gitops with per-cluster ingress). Empty (default) = dynamic ILB IP.
+  - **NVA/FortiGate topology (e.g. eastus2):** set a fixed IP in the AKS nodes
+    subnet so the FortiGate can DNAT to a known address.
+  - **NAT-Gateway topology (e.g. brazilsouth):** leave empty (dynamic).
+  - IPv4-or-empty validation.
+
+### Notes
+
+- Pairs with the operator's per-cluster ingress gating labels (estabilis.io/ingress.*):
+  `traefik_internal_enabled=true` drives the label; `traefik_internal_lb_ip` drives
+  the ILB IP.
+
 ## [3.1.0] - 2026-05-29
 
 ### Added

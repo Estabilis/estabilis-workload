@@ -43,6 +43,27 @@ variable "traefik_internal_enabled" {
   default     = false
 }
 
+variable "traefik_internal_lb_ip" {
+  description = <<-EOT
+    Fixed private IP for the Traefik internal LoadBalancer (Azure ILB). The IP
+    MUST belong to the AKS nodes subnet. Leave empty for Azure auto-assignment
+    from the subnet (dynamic). Only meaningful when traefik_internal_enabled=true.
+
+    Set this in the NVA/FortiGate topology (e.g. eastus2) where the FortiGate
+    DNATs to a known ILB IP. Leave empty in the NAT-Gateway topology (e.g.
+    brazilsouth) where a dynamic ILB IP is fine. Emitted as the bridge
+    annotation estabilis.io/bridge.traefik-internal-lb-ip and consumed per-cluster
+    by the workload-bootstrap traefik-internal ApplicationSet.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.traefik_internal_lb_ip == "" || can(regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$", var.traefik_internal_lb_ip))
+    error_message = "traefik_internal_lb_ip must be empty or a valid IPv4 address within the AKS nodes subnet."
+  }
+}
+
 variable "ingress_allowed_ip_ranges" {
   description = "IP ranges allowed inbound on ports 80/443 (NSG L4 filtering). Empty means public. Per-app L7 filtering is in each exposure's allowed_cidrs."
   type        = list(string)
