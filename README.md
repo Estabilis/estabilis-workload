@@ -120,10 +120,34 @@ When `hub_registration_enabled = true`, the module:
 
 1. Creates a Service Principal for the platform's workload operator
 2. Reads hub connection values from the platform's shared Key Vault
-3. Creates a `WorkloadCluster` custom resource on the hub
+3. Creates a `WorkloadCluster` custom resource on the hub, declaring how the hub
+   should reach this cluster's API server via `spec.apiServerAccess`
 4. Annotates the ArgoCD cluster secret with per-cluster identity values
 
 This allows the platform hub's ArgoCD to deploy baseline components (Kyverno, cert-manager, external-secrets, etc.) to the workload cluster automatically.
+
+### API server access mode
+
+The emitted `spec.apiServerAccess.mode` is **auto-derived** from the cluster
+topology and can be overridden:
+
+| `enable_private_cluster` | `hub_registration_api_server_access_mode` | Emitted mode | Allowlisting |
+|---|---|---|---|
+| `true` | `""` (auto) | `private` | skipped (private/peered) |
+| `false` | `""` (auto) | `allowlist` | hub egress IP allowlisted |
+| any | `private` / `allowlist` / `none` | as set | per mode |
+
+`hub_egress_ip` is consumed **only** in `allowlist` mode (a non-empty value is
+required there — sourced from the var or the `hub-egress-ip` hub Key Vault
+secret). In `private`/`none` mode it is ignored and the operator registers the
+cluster in ArgoCD directly.
+
+> **Network prerequisite:** `terraform apply` runs against the hub API server
+> via the `kubernetes.hub` provider. For a **private hub**, the apply host must
+> reach the hub private endpoint (jumpbox / VPN / self-hosted agent inside or
+> peered to the hub VNet, with DNS resolution of the hub
+> `privatelink.<region>.azmk8s.io` FQDN). This is an environmental requirement
+> no Terraform code can satisfy.
 
 ## Security
 

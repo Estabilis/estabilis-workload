@@ -65,15 +65,20 @@ environment = "prod"
 #
 # Step 1 — Get values from the platform:
 #   hub_api_server_url  → terraform output -raw hub_api_server_url  (estabilis-platform)
-#   hub_egress_ip       → terraform output -raw nat_gateway_public_ip (estabilis-platform)
-#   hub_registrar_token → kubectl get secret workload-registrar-token \
-#                           -n estabilis-system \
-#                           -o jsonpath='{.data.token}' | base64 -d
+#   hub_registrar_token → published automatically to the hub Key Vault by the
+#                           workload operator (Workload Identity); read from KV
+#                           when hub_key_vault_name is set. No CLI required.
 #
-# Step 2 — When hub_egress_ip is set here, remove the same IP from
-#           authorized_ip_ranges above to avoid duplication.
+# apiServerAccess mode is auto-derived: enable_private_cluster=true → "private"
+# (no allowlisting). For a PUBLIC workload cluster, set mode "allowlist" and
+# provide the hub egress IP:
+#   hub_registration_api_server_access_mode = "allowlist"
+#   hub_egress_ip = "<hub NAT GW IP>"   # or populate the hub-egress-ip KV secret
+# When allowlisting, remove the same IP from authorized_ip_ranges above to
+# avoid duplication.
 #
 # hub_registration_enabled = true
 # hub_api_server_url        = ""
-# hub_egress_ip             = ""
-# hub_registrar_token       = ""  # use secrets.auto.tfvars or TF_VAR_hub_registrar_token
+# hub_registrar_token       = ""  # only needed when NOT reading from hub Key Vault
+# # hub_registration_api_server_access_mode = ""   # "" = auto (private|allowlist)
+# # hub_egress_ip                           = ""   # allowlist mode only

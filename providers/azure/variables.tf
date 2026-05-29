@@ -905,9 +905,30 @@ variable "hub_ca_certificate" {
 }
 
 variable "hub_egress_ip" {
-  description = "Static outbound IP of the platform hub NAT Gateway. Get from: terraform output -raw nat_gateway_public_ip (estabilis-platform). When hub_registration_enabled = true, this IP is automatically added to authorized_ip_ranges of this AKS API server — remove it from authorized_ip_ranges/firewall_allowed_ips to avoid duplication."
+  description = "Static outbound IP of the platform hub egress (NAT Gateway). Only used when the effective WorkloadCluster apiServerAccess mode is 'allowlist' (public API server). Get from: terraform output -raw nat_gateway_public_ip (estabilis-platform), or the hub Key Vault 'hub-egress-ip' secret. Leave empty for private/peered clusters."
   type        = string
   default     = ""
+}
+
+variable "hub_registration_api_server_access_mode" {
+  description = <<-EOT
+    Overrides the apiServerAccess.mode emitted on this cluster's WorkloadCluster
+    CR (operator contract, estabilis-workload-operator >= v0.8.0).
+
+      ""         (default) — auto: derived from enable_private_cluster
+                  (private cluster => "private", public => "allowlist").
+      "private"  — operator skips API-server allowlisting (private/peered).
+      "allowlist"— operator allowlists hub_egress_ip on the public API server
+                  (requires a non-empty resolved hub egress IP).
+      "none"     — allowlisting managed outside the operator; it only registers.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = contains(["", "private", "allowlist", "none"], var.hub_registration_api_server_access_mode)
+    error_message = "hub_registration_api_server_access_mode must be one of \"\" (auto), private, allowlist, none."
+  }
 }
 
 # ===========================================================================

@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-05-29
+
+### Added
+
+- **`spec.apiServerAccess` on the emitted `WorkloadCluster` CR** (operator
+  contract >= v0.8.0). The module now declares how the hub reaches this
+  cluster's API server:
+  - New variable `hub_registration_api_server_access_mode`
+    (`""` = auto | `private` | `allowlist` | `none`). Default `""` auto-derives
+    the mode from `enable_private_cluster` (private → `private`, public →
+    `allowlist`).
+  - `hubEgressIp` is emitted **only** in `allowlist` mode; private/peered
+    clusters omit it entirely (no more `""`/`/32` garbage reaching the operator).
+  - Plan-time `precondition`: `allowlist` mode requires a non-empty hub egress IP.
+
+### Changed
+
+- **`hub-egress-ip` Key Vault secret is read only in `allowlist` mode.** In the
+  private/peered topology the platform no longer writes that secret, so reading
+  it unconditionally would fail — the data source is now gated on the effective
+  mode.
+- **`hub_egress_ip` variable** re-documented as allowlist-only.
+
+### Notes
+
+- **Network prerequisite (private hub):** `terraform apply` must reach the hub
+  private API server via the `kubernetes.hub` provider (jumpbox / VPN /
+  self-hosted agent peered to the hub VNet + DNS for the hub
+  `privatelink.<region>.azmk8s.io`). Documented in README; not satisfiable in code.
+- **Downstream:** the 4 per-client repos bump `providers/azure/main.tf ref=` to
+  this tag and (for private clusters) leave the mode on auto.
+
 ## [3.0.0] - 2026-05-28
 
 ### Added — BYO Network mode + Private Cluster + PE-only parity with `estabilis-platform`

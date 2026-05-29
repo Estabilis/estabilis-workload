@@ -6,8 +6,29 @@
 # Then registers this cluster in the platform hub via WorkloadCluster CRD.
 #
 # Enable with: hub_registration_enabled = true
-# Required variables: hub_api_server_url, hub_registrar_token, hub_egress_ip
+# Required variables: hub_api_server_url, hub_registrar_token
+#   (hub_egress_ip is required ONLY when the effective apiServerAccess mode is
+#    "allowlist" — i.e. a public-API-server workload cluster.)
+#
+# NETWORK PREREQUISITE (no code can substitute this): the `kubernetes.hub`
+# provider must be able to reach the platform hub's API server during
+# `terraform apply`. For a PRIVATE hub the apply host needs line-of-sight to
+# the hub private endpoint — a jumpbox / VPN / self-hosted agent inside (or
+# peered to) the hub VNet, plus DNS resolution of the hub
+# privatelink.<region>.azmk8s.io FQDN. Running apply from an unpeered network
+# will hang/fail on the kubernetes.hub resources.
 # ---------------------------------------------------------------------------
+
+locals {
+  # Effective apiServerAccess.mode emitted on the WorkloadCluster CR. Auto
+  # derives from the cluster topology (private cluster => "private") unless an
+  # explicit override is set. Mirrors the operator contract (>= v0.8.0).
+  hub_registration_access_mode = (
+    var.hub_registration_api_server_access_mode != ""
+    ? var.hub_registration_api_server_access_mode
+    : (var.enable_private_cluster ? "private" : "allowlist")
+  )
+}
 
 resource "azuread_application" "workload_operator" {
   count        = var.hub_registration_enabled ? 1 : 0
@@ -73,7 +94,13 @@ resource "kubernetes_manifest" "workload_registration" {
       apiServerUrl  = azurerm_kubernetes_cluster.workload.kube_config[0].host
       caCertificate = azurerm_kubernetes_cluster.workload.kube_config[0].cluster_ca_certificate
       bearerToken   = kubernetes_secret_v1.hub_workload_token[0].metadata[0].name
-      hubEgressIp   = local.hub_egress
+      # apiServerAccess (operator contract >= v0.8.0). hubEgressIp is emitted
+      # ONLY in allowlist mode; private/none omit it entirely so the operator
+      # never builds a malformed "/32".
+      apiServerAccess = merge(
+        { mode = local.hub_registration_access_mode },
+        local.hub_registration_access_mode == "allowlist" ? { hubEgressIp = local.hub_egress } : {}
+      )
       bridgeSecretRef = {
         name      = kubernetes_secret_v1.bridge[0].metadata[0].name
         namespace = kubernetes_secret_v1.bridge[0].metadata[0].namespace
@@ -97,4 +124,11 @@ resource "kubernetes_manifest" "workload_registration" {
     kubernetes_secret_v1.hub_workload_token,
     kubernetes_secret_v1.bridge,
   ]
+
+  lifecycle {
+    precondition {
+      condition     = local.hub_registration_access_mode != "allowlist" || local.hub_egress != ""
+      error_message = "apiServerAccess mode 'allowlist' requires a non-empty hub egress IP. Set hub_egress_ip, or populate the hub Key Vault 'hub-egress-ip' secret, or use mode 'private'/'none'."
+    }
+  }
 }

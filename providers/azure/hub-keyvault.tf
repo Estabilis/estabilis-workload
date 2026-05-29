@@ -43,8 +43,11 @@ data "azurerm_key_vault_secret" "hub_registrar_token" {
   key_vault_id = data.azurerm_key_vault.hub[0].id
 }
 
+# Only read when the effective apiServerAccess mode is "allowlist" — in the
+# private/peered topology the platform no longer writes this secret at all
+# (estabilis-platform shared.tf), so reading it unconditionally would fail.
 data "azurerm_key_vault_secret" "hub_egress_ip" {
-  count        = local.hub_kv_enabled ? 1 : 0
+  count        = local.hub_kv_enabled && local.hub_registration_access_mode == "allowlist" ? 1 : 0
   name         = "hub-egress-ip"
   key_vault_id = data.azurerm_key_vault.hub[0].id
 }
