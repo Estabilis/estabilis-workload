@@ -1213,6 +1213,18 @@ variable "deployment_id" {
   default     = ""
 }
 
+variable "internal_dns_zone_id" {
+  description = "ARM ID of the hub-owned Azure Private DNS zone for INTERNAL hostnames (e.g. .../privateDnsZones/azure.estabilis-transfero.dev). When set together with internal_domain, the workload runs a second external-dns instance (provider=azure-private-dns) that publishes A records for internal exposures into this zone, replacing static wildcard records hand-maintained in the network repo. The zone may live in a different resource group / subscription (the hub's). Empty disables the internal external-dns."
+  type        = string
+  default     = ""
+}
+
+variable "external_dns_internal_enabled" {
+  description = "Run the internal external-dns instance (provider=azure-private-dns) bound to internal_dns_zone_id. Effective only when internal_dns_zone_id AND internal_domain are both set. Default true: enabled wherever the internal zone is provided. The instance reads the Service's actual LoadBalancer IP, so it works for both fixed (FortiGate VIP) and dynamic (NAT-Gateway) internal ILBs."
+  type        = bool
+  default     = true
+}
+
 variable "node_resource_group" {
   description = "Override for the auto-generated AKS node resource group name. Azure default is MC_<rg-name>_<cluster-name>_<region> which can exceed the 80-char limit when both rg-name and cluster-name include long region names like brazilsouth. Set to a shorter explicit name when default exceeds the limit. Empty (default) lets Azure compose the default name."
   type        = string

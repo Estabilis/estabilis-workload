@@ -63,6 +63,15 @@ resource "kubernetes_secret_v1" "bridge" {
     # template stays logic-free. Internal requested but no internal_domain set
     # → fall back to the public domain (avoids an empty-domain "mimir.." URL).
     "hub-telemetry-domain" = var.telemetry_use_internal && var.internal_domain != "" ? var.internal_domain : var.domain
+    # Internal external-dns (split-horizon) — the gitops external-dns-internal
+    # ApplicationSet consumes these. Empty when disabled → operator drops the
+    # annotations and the per-cluster gate label stays off. The PDZ may live in
+    # a different RG/subscription (the hub's), so both are derived from the zone
+    # ARM ID: /subscriptions/<sub>/resourceGroups/<rg>/providers/.../privateDnsZones/<zone>
+    "external-dns-internal-enabled"   = tostring(local.external_dns_internal_enabled)
+    "external-dns-internal-client-id" = local.external_dns_internal_enabled ? azurerm_user_assigned_identity.external_dns_internal[0].client_id : ""
+    "internal-dns-resource-group"     = var.internal_dns_zone_id != "" ? element(split("/", var.internal_dns_zone_id), 4) : ""
+    "internal-dns-subscription-id"    = var.internal_dns_zone_id != "" ? element(split("/", var.internal_dns_zone_id), 2) : ""
     # ADR 0014 — exposure JSON as bridge data (non-sensitive configuration).
     # Operator stamps as annotation; ApplicationSet goTemplate reads it.
     # base64-encoded because helm --set-string can't handle raw JSON

@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-05-30
+
+### Added
+
+- **Internal external-dns (split-horizon DNS).** New second external-dns instance
+  bound to the hub's Azure Private DNS zone, so internal hostnames
+  (`*.{cluster}.{internal_domain}`, e.g.
+  `hubble.<cluster>.azure.estabilis-transfero.dev`) get A records published
+  automatically — instead of a static wildcard hand-maintained in the network-hub
+  repo. Works for **both** ILB topologies: it reads the Service's actual
+  LoadBalancer IP, so a fixed ILB (FortiGate VIP) and a dynamic ILB (NAT-Gateway)
+  are both published correctly. The public external-dns (Cloudflare) is unchanged.
+  - `var.external_dns_internal_enabled` (default `true`) — effective only when
+    `internal_dns_zone_id` and `internal_domain` are both set.
+  - `var.internal_dns_zone_id` — ARM ID of the hub-owned Private DNS zone (may be
+    in a different RG/subscription).
+  - Creates a dedicated Workload Identity (`mi-<base>-external-dns-int`) + FIC
+    (`system:serviceaccount:external-dns-internal:external-dns-internal`) and grants
+    it **Private DNS Zone Contributor** on the zone — mirroring how `aks.tf`
+    already grants the same role on the API-server PDZ.
+  - New bridge annotations consumed by the gitops `external-dns-internal`
+    ApplicationSet: `external-dns-internal-enabled`,
+    `external-dns-internal-client-id`, `internal-dns-resource-group`,
+    `internal-dns-subscription-id`.
+
 ## [3.3.0] - 2026-05-29
 
 ### Added
