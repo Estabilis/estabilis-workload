@@ -901,9 +901,15 @@ variable "hub_registration_enabled" {
 }
 
 variable "hub_cluster_name" {
-  description = "Name of the platform hub AKS cluster. Used to derive push URLs for observability (Alloy → Loki/Mimir). Get from: terraform output -raw aks_cluster_name (estabilis-platform)."
+  description = "Name of the platform hub AKS cluster (e.g. aks-<prefix>-platform-<env>-<region>). Used to derive observability push URLs (Alloy → Loki/Mimir: {app}.{hub_cluster_name}.{telemetry_domain}). When empty and KV integration is on, it is read from the hub Key Vault secret 'hub-cluster-name' (published by estabilis-platform shared.tf); set this only to override. Manual fetch: terraform output -raw aks_cluster_name (estabilis-platform)."
   type        = string
   default     = ""
+}
+
+variable "telemetry_use_internal" {
+  description = "When true (default), the workload's Alloy pushes logs/metrics to the hub over the INTERNAL split-horizon domain (internal_domain, e.g. mimir.<hub>.azure.<domain> via Private DNS + VNet peering) — traffic stays on the private network. When false, it uses the public domain (mimir.<hub>.<domain>). Choose per environment/architecture. The resolved endpoint domain is emitted to the cluster bridge as 'hub-telemetry-domain' so the gitops alloy template stays logic-free. Internal requested but internal_domain empty → falls back to the public domain."
+  type        = bool
+  default     = true
 }
 
 variable "hub_api_server_url" {

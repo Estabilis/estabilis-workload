@@ -43,6 +43,18 @@ data "azurerm_key_vault_secret" "hub_registrar_token" {
   key_vault_id = data.azurerm_key_vault.hub[0].id
 }
 
+# Hub AKS resource name — used to derive the hub observability endpoints
+# (loki/mimir remote_write) on workload clusters. Published by the platform
+# (estabilis-platform shared.tf, secret "hub-cluster-name") whenever
+# shared_hub_kv_enabled, exactly like hub-api-server-url. Read unconditionally
+# under hub_kv_enabled (same coupling); var.hub_cluster_name remains a manual
+# override/fallback when KV integration is off.
+data "azurerm_key_vault_secret" "hub_cluster_name" {
+  count        = local.hub_kv_enabled ? 1 : 0
+  name         = "hub-cluster-name"
+  key_vault_id = data.azurerm_key_vault.hub[0].id
+}
+
 # Only read when the effective apiServerAccess mode is "allowlist" — in the
 # private/peered topology the platform no longer writes this secret at all
 # (estabilis-platform shared.tf), so reading it unconditionally would fail.
@@ -76,5 +88,17 @@ locals {
     local.hub_kv_enabled && length(data.azurerm_key_vault_secret.hub_egress_ip) > 0
     ? data.azurerm_key_vault_secret.hub_egress_ip[0].value
     : var.hub_egress_ip
+  )
+  # Manual var.hub_cluster_name wins when set (explicit override); otherwise the
+  # KV value. Empty in both → "" → operator drops the bridge annotation and the
+  # alloy URL stays unset (no telemetry endpoint, instead of a broken "mimir..").
+  hub_cluster_name = (
+    var.hub_cluster_name != ""
+    ? var.hub_cluster_name
+    : (
+      local.hub_kv_enabled && length(data.azurerm_key_vault_secret.hub_cluster_name) > 0
+      ? data.azurerm_key_vault_secret.hub_cluster_name[0].value
+      : ""
+    )
   )
 }

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-05-29
+
+### Added
+
+- **`var.telemetry_use_internal`** (default `true`) — selects the network path
+  the workload's Alloy uses to push logs/metrics to the hub. `true` → the
+  internal split-horizon domain (`internal_domain`, e.g.
+  `mimir.<hub>.azure.<domain>` via Private DNS + VNet peering, traffic never
+  leaves the private network); `false` → the public domain. The resolved domain
+  is emitted as the new bridge annotation `hub-telemetry-domain`, so the gitops
+  alloy template stays logic-free (the routing decision is made here, in TF).
+  Internal requested but `internal_domain` empty → falls back to the public
+  `domain` (avoids an empty-domain `mimir..` URL).
+- **`hub-cluster-name` now resolved from the hub Key Vault.** `hub-keyvault.tf`
+  reads the `hub-cluster-name` secret (published by estabilis-platform >= v0.61.7)
+  and the bridge annotation `hub-cluster-name` now uses
+  `local.hub_cluster_name` = `var.hub_cluster_name` (explicit override) **or**
+  the KV value. Fixes the empty `hub-cluster-name` that produced the malformed
+  `mimir..<domain>` Alloy push URL, without hardcoding the hub name in each
+  workload's tfvars.
+
+### Changed
+
+- `var.hub_cluster_name` description clarified: it is now an optional **override**
+  of the KV-sourced value, used to derive the observability push URLs
+  (`{app}.{hub_cluster_name}.{telemetry_domain}`).
+
 ## [3.2.0] - 2026-05-29
 
 ### Added

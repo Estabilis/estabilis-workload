@@ -53,9 +53,16 @@ resource "kubernetes_secret_v1" "bridge" {
     # as ${name_prefix}-${deployment_id} (matches platform module convention).
     # When empty, fall back to the AKS resource name (legacy behavior).
     "cluster-name"       = var.deployment_id != "" ? "${var.name_prefix}-${var.deployment_id}" : azurerm_kubernetes_cluster.workload.name
-    "hub-cluster-name"   = var.hub_cluster_name
+    "hub-cluster-name"   = local.hub_cluster_name
     "cloudflare-zone-id" = var.domain != "" && var.dns_provider == "cloudflare" ? var.cloudflare_zone_id : ""
     "letsencrypt-email"  = var.letsencrypt_email
+    # Observability endpoint domain for the workload's Alloy (loki/mimir
+    # remote_write). The gitops alloy template builds the URL as
+    # mimir.{hub-cluster-name}.{hub-telemetry-domain}/... so the routing
+    # decision (private split-horizon vs public) is made HERE, in TF, and the
+    # template stays logic-free. Internal requested but no internal_domain set
+    # → fall back to the public domain (avoids an empty-domain "mimir.." URL).
+    "hub-telemetry-domain" = var.telemetry_use_internal && var.internal_domain != "" ? var.internal_domain : var.domain
     # ADR 0014 — exposure JSON as bridge data (non-sensitive configuration).
     # Operator stamps as annotation; ApplicationSet goTemplate reads it.
     # base64-encoded because helm --set-string can't handle raw JSON
