@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1] - 2026-05-30
+
+### Fixed
+
+- v3.4.0 was incomplete: `cluster-annotations.tf` / `outputs.tf` referenced the
+  internal external-dns managed identity and `local.external_dns_internal_enabled`,
+  but the resource block, the local and the output were never added to
+  `workload-identity.tf` / `outputs.tf` — any consumer failed `terraform validate`
+  ("resource has not been declared in module"). Adds the missing local, the
+  UAMI + FIC + "Private DNS Zone Contributor" role on `internal_dns_zone_id`, and
+  the `external_dns_internal_client_id` output. **Do not use v3.4.0.**
+
 ## [3.4.0] - 2026-05-30
 
 ### Added

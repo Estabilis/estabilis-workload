@@ -110,6 +110,47 @@ resource "azurerm_role_assignment" "external_dns_dns_contributor" {
 }
 
 # ---------------------------------------------------------------------------
+# Internal external-dns — split-horizon DNS into the hub's Private DNS zone
+# ---------------------------------------------------------------------------
+# A second external-dns instance (provider=azure-private-dns) publishes A
+# records for internal hostnames (*.{cluster}.{internal_domain}) into the
+# hub-owned Azure Private DNS zone, reading the Service's actual ILB IP (works
+# for both fixed FortiGate-VIP and dynamic NAT-Gateway ILBs). Independent of the
+# public external-dns above. Gated on internal_dns_zone_id + internal_domain.
+# The managed identity gets "Private DNS Zone Contributor" on the (possibly
+# cross-RG / cross-subscription) hub zone — mirroring how aks.tf grants the same
+# role on the API-server PDZ.
+locals {
+  external_dns_internal_enabled = (
+    var.external_dns_internal_enabled && var.internal_dns_zone_id != "" && var.internal_domain != ""
+  )
+}
+
+resource "azurerm_user_assigned_identity" "external_dns_internal" {
+  count               = local.external_dns_internal_enabled ? 1 : 0
+  name                = "mi-${local.base_name}-external-dns-int"
+  resource_group_name = azurerm_resource_group.workload.name
+  location            = azurerm_resource_group.workload.location
+  tags                = local.tags
+}
+
+resource "azurerm_federated_identity_credential" "external_dns_internal" {
+  count                     = local.external_dns_internal_enabled ? 1 : 0
+  name                      = "fic-external-dns-internal"
+  user_assigned_identity_id = azurerm_user_assigned_identity.external_dns_internal[0].id
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = local.aks_oidc_issuer_url
+  subject                   = "system:serviceaccount:external-dns-internal:external-dns-internal"
+}
+
+resource "azurerm_role_assignment" "external_dns_internal_pdz_contributor" {
+  count                = local.external_dns_internal_enabled ? 1 : 0
+  scope                = var.internal_dns_zone_id
+  role_definition_name = "Private DNS Zone Contributor"
+  principal_id         = azurerm_user_assigned_identity.external_dns_internal[0].principal_id
+}
+
+# ---------------------------------------------------------------------------
 # cert-manager — DNS validation for TLS certificates (optional)
 # Only needed if workload has its own domain with DNS zone.
 # ---------------------------------------------------------------------------

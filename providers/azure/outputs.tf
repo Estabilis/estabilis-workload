@@ -85,6 +85,11 @@ output "external_dns_client_id" {
   value       = var.domain != "" && var.dns_provider == "azure" ? azurerm_user_assigned_identity.external_dns[0].client_id : ""
 }
 
+output "external_dns_internal_client_id" {
+  description = "Client ID of the internal external-dns managed identity (empty when internal external-dns is disabled)."
+  value       = local.external_dns_internal_enabled ? azurerm_user_assigned_identity.external_dns_internal[0].client_id : ""
+}
+
 output "cert_manager_client_id" {
   description = "Client ID of the cert-manager managed identity (empty if no domain)."
   value       = var.domain != "" ? azurerm_user_assigned_identity.cert_manager[0].client_id : ""
