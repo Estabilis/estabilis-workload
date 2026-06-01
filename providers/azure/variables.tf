@@ -1062,8 +1062,14 @@ variable "keyvault_private_endpoint_enabled" {
   default     = false
 }
 
+variable "tfstate_enabled" {
+  description = "Create the module-managed Terraform state backend (resource group + storage account + container + deployer role assignment). Default true preserves the self-bootstrap pattern. Set false when the backend lives in an external, pre-provisioned storage account (e.g. a central bootstrap layer) — avoids an orphaned tfstate storage account per workload."
+  type        = bool
+  default     = true
+}
+
 variable "tfstate_private_endpoint_enabled" {
-  description = "Enable Private Endpoint for the tfstate Storage Account. Requires external_pdz_blob_id."
+  description = "Enable Private Endpoint for the tfstate Storage Account. Requires external_pdz_blob_id and tfstate_enabled=true."
   type        = bool
   default     = false
 }

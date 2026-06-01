@@ -5,9 +5,9 @@
 # ---------------------------------------------------------------------------
 
 resource "azurerm_management_lock" "tfstate" {
-  count      = var.storage_protect_critical ? 1 : 0
+  count      = var.tfstate_enabled && var.storage_protect_critical ? 1 : 0
   name       = "lock-tfstate"
-  scope      = azurerm_storage_account.tfstate.id
+  scope      = azurerm_storage_account.tfstate[0].id
   lock_level = "CanNotDelete"
   notes      = "Protects Terraform state. Remove before destroy: storage_protect_critical = false"
 }
