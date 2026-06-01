@@ -54,8 +54,8 @@ output "keyvault_uri" {
 # --- Storage ---
 
 output "tfstate_storage_account_name" {
-  description = "Storage account name for Terraform state backend."
-  value       = azurerm_storage_account.tfstate.name
+  description = "Storage account name for Terraform state backend (null when tfstate_enabled = false)."
+  value       = one(azurerm_storage_account.tfstate[*].name)
 }
 
 output "velero_backup_storage_account_name" {

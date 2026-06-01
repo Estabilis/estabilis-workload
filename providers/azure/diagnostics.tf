@@ -123,9 +123,9 @@ resource "azurerm_monitor_diagnostic_setting" "keyvault_external" {
 # ---------------------------------------------------------------------------
 
 resource "azurerm_monitor_diagnostic_setting" "sa_tfstate_local" {
-  count                      = var.diagnostics_enabled ? 1 : 0
+  count                      = var.tfstate_enabled && var.diagnostics_enabled ? 1 : 0
   name                       = "diag-${local.base_name}-tfstate-blob"
-  target_resource_id         = "${azurerm_storage_account.tfstate.id}/blobServices/default"
+  target_resource_id         = "${azurerm_storage_account.tfstate[0].id}/blobServices/default"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.workload[0].id
 
   dynamic "enabled_log" {
@@ -144,9 +144,9 @@ resource "azurerm_monitor_diagnostic_setting" "sa_tfstate_local" {
 }
 
 resource "azurerm_monitor_diagnostic_setting" "sa_tfstate_external" {
-  count                      = local.external_law_enabled ? 1 : 0
+  count                      = var.tfstate_enabled && local.external_law_enabled ? 1 : 0
   name                       = "diag-${local.base_name}-tfstate-blob-external"
-  target_resource_id         = "${azurerm_storage_account.tfstate.id}/blobServices/default"
+  target_resource_id         = "${azurerm_storage_account.tfstate[0].id}/blobServices/default"
   log_analytics_workspace_id = var.external_log_analytics_workspace_id
 
   dynamic "enabled_log" {

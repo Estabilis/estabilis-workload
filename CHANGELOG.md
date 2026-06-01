@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-06-01
+
+### Added
+
+- **`var.tfstate_enabled` (default `true`).** Gates the module-managed Terraform
+  state backend (`azurerm_resource_group.tfstate`, `azurerm_storage_account.tfstate`,
+  `azurerm_storage_container.tfstate`, `azurerm_role_assignment.tfstate_deployer`,
+  and the optional tfstate private endpoint). Default `true` preserves the
+  existing self-bootstrap pattern — no change for current consumers. Set `false`
+  when the backend lives in an external, pre-provisioned storage account (e.g. a
+  central bootstrap layer), avoiding an orphaned tfstate storage account per
+  workload. The shared `random_string.storage_suffix` (in `main.tf`) is
+  unaffected, so Key Vault / Velero / cost-export / ACR names are unchanged.
+  Dependent satellites (resource lock, blob diagnostic settings, and the
+  `tfstate_storage_account_name` output) are gated/`one()`-guarded accordingly.
+
 ## [3.4.1] - 2026-05-30
 
 ### Fixed
