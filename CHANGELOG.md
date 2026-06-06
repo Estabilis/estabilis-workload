@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] - 2026-06-06
+
+### Added
+
+- **`var.public_ingress_ip` (default `""`).** Public ingress IP — the gateway /
+  FortiGate VIP that DNATs to this cluster's internal Traefik ILB — used as the
+  PUBLIC external-dns target in the DNAT-gateway topology. Symmetric public
+  counterpart of `var.traefik_internal_lb_ip`. When non-empty, the bridge Secret
+  emits two new keys:
+  - `ingress-public-ip` (the VIP) → annotation `estabilis.io/bridge.ingress-public-ip`,
+    consumed by the public-DNAT external-dns variant as `--default-targets`.
+  - `public-dns-enabled` (`= public_ingress_ip != ""`) → the operator stamps the
+    gate label `estabilis.io/addon.public-dns`, routing the cluster to that
+    variant (which forces the VIP and excludes the internal split-horizon domain
+    from the public zone). Empty → both dropped → cluster stays on the base
+    public external-dns (NAT-Gateway behavior unchanged). Forward-compatible with
+    ADR 0039 (`ingress-public-ip`).
+
 ## [3.5.0] - 2026-06-01
 
 ### Added
