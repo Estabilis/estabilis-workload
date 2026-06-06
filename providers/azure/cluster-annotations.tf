@@ -82,6 +82,15 @@ resource "kubernetes_secret_v1" "bridge" {
     # Fixed ILB IP for traefik-internal (NVA/FortiGate topology). Empty in the
     # NAT-Gateway topology → operator drops the annotation → ILB stays dynamic.
     "traefik-internal-lb-ip" = var.traefik_internal_lb_ip
-    "hubble-ui-exposures"    = base64encode(jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled }))
+    # Public ingress VIP (DNAT-gateway/FortiGate topology) — symmetric public
+    # counterpart of traefik-internal-lb-ip. Empty → operator drops both the
+    # annotation AND the gate label below → cluster stays on the BASE public
+    # external-dns (no forced default-targets). When set, the gate-label key
+    # public-dns-enabled=true routes the cluster to the public-DNAT external-dns
+    # variant (excludeDomains + --default-targets=<VIP> --force-default-targets).
+    # Forward-compatible with ADR 0039 (ingress-public-ip).
+    "ingress-public-ip"   = var.public_ingress_ip
+    "public-dns-enabled"  = tostring(var.public_ingress_ip != "")
+    "hubble-ui-exposures" = base64encode(jsonencode({ for k, v in local.hubble_ui_exposures_resolved : k => v if v.enabled }))
   }
 }

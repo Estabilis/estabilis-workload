@@ -64,6 +64,34 @@ variable "traefik_internal_lb_ip" {
   }
 }
 
+variable "public_ingress_ip" {
+  description = <<-EOT
+    Public ingress IP (the gateway/FortiGate VIP that DNATs to this cluster's
+    internal ILB) used as the PUBLIC external-dns target. Set ONLY in the
+    DNAT-gateway topology (e.g. eastus2 behind FortiGate); leave empty in the
+    NAT-Gateway topology, where the public external-dns derives the target from
+    the Service.
+
+    When non-empty, the workload TF emits the bridge annotation
+    estabilis.io/bridge.ingress-public-ip (the VIP) AND the gate-label key
+    public-dns-enabled=true (→ operator stamps estabilis.io/addon.public-dns),
+    which routes this cluster to the public-DNAT external-dns variant that
+    forces --default-targets=<this IP> + --force-default-targets and excludes the
+    internal split-horizon domain from the public (Cloudflare) zone.
+
+    Symmetric public counterpart of traefik_internal_lb_ip (the internal ILB).
+    Source of truth = the firewall repo's aks_ingress_pips output (copy the VIP
+    for this cluster). Forward-compatible with ADR 0039 (ingress-public-ip).
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.public_ingress_ip == "" || can(regex("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$", var.public_ingress_ip))
+    error_message = "public_ingress_ip must be empty or a valid IPv4 address (the gateway/FortiGate public VIP)."
+  }
+}
+
 variable "ingress_allowed_ip_ranges" {
   description = "IP ranges allowed inbound on ports 80/443 (NSG L4 filtering). Empty means public. Per-app L7 filtering is in each exposure's allowed_cidrs."
   type        = list(string)
